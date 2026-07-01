@@ -3,9 +3,41 @@
 [![CI](https://github.com/PlatformStackPulse/tf-molecule-vpc-network-aws/actions/workflows/ci.yml/badge.svg)](https://github.com/PlatformStackPulse/tf-molecule-vpc-network-aws/actions/workflows/ci.yml)
 ![Terraform](https://img.shields.io/badge/terraform-%3E%3D1.6.0-blueviolet)
 
-## Purpose
+Complete AWS VPC network molecule: a VPC with public/private subnets across availability zones, an internet gateway, optional NAT gateways, and full public/private route tables — composed from tf-atom building blocks and named via [tf-label](https://github.com/PlatformStackPulse/tf-label).
 
-Terraform molecule: Complete VPC network with public/private subnets, IGW, NAT gateways, and routing.
+## Features
+
+- **VPC** with DNS support and DNS hostnames enabled.
+- **Public + private subnets** — one per entry in `public_subnet_cidrs` / `private_subnet_cidrs`, spread across `availability_zones`. Public subnets auto-assign public IPs.
+- **Internet Gateway** with a public route table and default route (`0.0.0.0/0`) to the IGW.
+- **Optional NAT gateways** (`nat_gateway_enabled`) with configurable count (`nat_gateway_count`) for cost-vs-HA trade-off; private subnets route egress through them.
+- **Per-subnet route tables and associations** for both public and private tiers.
+- **tf-label naming** — consistent `namespace-stage-name` identifiers and tags across every child resource, with a global `enabled` switch to create nothing.
+
+## Usage
+
+```hcl
+module "vpc_network" {
+  source = "git::https://github.com/PlatformStackPulse/tf-molecule-vpc-network-aws.git?ref=v1.0.0"
+
+  namespace = "eg"
+  stage     = "prod"
+  name      = "core"
+
+  availability_zones = ["us-east-1a", "us-east-1b"]
+
+  vpc_cidr_block       = "10.0.0.0/16"
+  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+
+  nat_gateway_enabled = true
+  nat_gateway_count   = 1
+
+  tags = {
+    Team = "platform"
+  }
+}
+```
 
 ## Module Documentation
 
@@ -84,3 +116,19 @@ No resources.
 | <a name="output_vpc_cidr_block"></a> [vpc\_cidr\_block](#output\_vpc\_cidr\_block) | CIDR block of the VPC |
 | <a name="output_vpc_id"></a> [vpc\_id](#output\_vpc\_id) | ID of the VPC |
 <!-- END_TF_DOCS -->
+
+## Tests
+
+Unit tests use the built-in `terraform test` framework with a **mock AWS provider** (no real AWS calls, no credentials required). They assert on values known at plan time — network topology cardinality (subnet / NAT counts derived from the input CIDR lists) and the `enabled` / `nat_gateway_enabled` toggles.
+
+```bash
+# Unit tests (mock provider, no AWS credentials needed)
+terraform init -backend=false
+terraform test -test-directory=tests/unit
+
+# Or via the Makefile
+make test-unit
+
+# Integration tests (real AWS credentials required)
+terraform test -test-directory=tests/integration
+```
